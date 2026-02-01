@@ -1,15 +1,19 @@
 """Async HTTP client for the Moltbook API.
 
-Follows Single Responsibility: only handles HTTP transport and response parsing.
-Depends on abstractions (Pydantic models) not concrete implementations.
+Implements AbstractMoltbookClient.
+Rate limiting handled via httpx event hooks — transparent to all request methods.
 """
 
+import asyncio
+from collections import deque
+from datetime import datetime, timedelta
 from typing import Any
 
 import httpx
 from pydantic import SecretStr
 from tenacity import retry, stop_after_attempt, wait_exponential
 
+from kyf.clients.base import AbstractMoltbookClient
 from kyf.logger import get_logger
 from kyf.models.moltbook import (
     AgentProfile,
@@ -18,15 +22,12 @@ from kyf.models.moltbook import (
     CreateCommentRequest,
     CreatePostRequest,
     CreateSubmoltRequest,
-    MoltbookResponse,
-    PaginatedResponse,
     Post,
     PostSortOrder,
     Submolt,
     UpdateProfileRequest,
     VoteRequest,
 )
-from kyf.utils.rate_limiter import RateLimiter
 
 logger = get_logger(__name__)
 
@@ -41,13 +42,59 @@ class MoltbookClientError(Exception):
         super().__init__(message)
 
 
-class MoltbookClient:
-    """Async client for Moltbook REST API."""
+def _build_rate_limit_hook(
+    max_requests: int = 90, window_seconds: int = 60
+) -> httpx.EventHook:
+    """Create an httpx request event hook that enforces rate limiting.
+
+    Uses a sliding window approach — tracks timestamps of recent requests
+    and sleeps if the limit is about to be exceeded.
+    """
+    timestamps: deque[datetime] = deque()
+    lock = asyncio.Lock()
+    window = timedelta(seconds=window_seconds)
+
+    async def hook(request: httpx.Request) -> None:
+        async with lock:
+            now = datetime.utcnow()
+            cutoff = now - window
+
+            # Evict expired timestamps
+            while timestamps and timestamps[0] <= cutoff:
+                timestamps.popleft()
+
+            if len(timestamps) >= max_requests:
+                oldest = timestamps[0]
+                wait = (oldest + window - now).total_seconds()
+                if wait > 0:
+                    logger.debug("rate_limit_wait", seconds=round(wait, 2))
+                    await asyncio.sleep(wait)
+
+            timestamps.append(datetime.utcnow())
+
+    return hook
+
+
+def _build_logging_hook() -> httpx.EventHook:
+    """Create an httpx response event hook that logs all API responses."""
+
+    async def hook(response: httpx.Response) -> None:
+        logger.debug(
+            "api_response",
+            method=response.request.method,
+            url=str(response.request.url.path),
+            status=response.status_code,
+        )
+
+    return hook
+
+
+class MoltbookClient(AbstractMoltbookClient):
+    """Concrete Moltbook API client with rate limiting via httpx hooks."""
 
     def __init__(self, base_url: str, api_key: SecretStr) -> None:
         self._base_url = base_url.rstrip("/")
         self._api_key = api_key
-        self._rate_limiter = RateLimiter(max_requests=90, window_seconds=60)
         self._client: httpx.AsyncClient | None = None
 
     async def _get_client(self) -> httpx.AsyncClient:
@@ -59,6 +106,10 @@ class MoltbookClient:
                     "Content-Type": "application/json",
                 },
                 timeout=30.0,
+                event_hooks={
+                    "request": [_build_rate_limit_hook()],
+                    "response": [_build_logging_hook()],
+                },
             )
         return self._client
 
@@ -73,7 +124,6 @@ class MoltbookClient:
     async def _request(
         self, method: str, path: str, json_data: dict[str, Any] | None = None
     ) -> dict[str, Any]:
-        await self._rate_limiter.acquire()
         client = await self._get_client()
         full_url = f"{self._base_url}{path}"
         self._validate_url(full_url)
@@ -88,7 +138,6 @@ class MoltbookClient:
                 hint=data.get("hint"),
             )
 
-        logger.debug("api_request", method=method, path=path, status=response.status_code)
         return data
 
     # --- Posts ---
@@ -166,13 +215,12 @@ class MoltbookClient:
     # --- Heartbeat ---
 
     async def fetch_heartbeat(self) -> str:
-        """Fetch heartbeat.md — uses a separate unauthenticated request."""
         async with httpx.AsyncClient(timeout=15.0) as client:
             resp = await client.get("https://www.moltbook.com/heartbeat.md")
             resp.raise_for_status()
             return resp.text
 
-    # --- Cleanup ---
+    # --- Lifecycle ---
 
     async def close(self) -> None:
         if self._client and not self._client.is_closed:
