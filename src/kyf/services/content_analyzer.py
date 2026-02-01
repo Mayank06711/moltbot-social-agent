@@ -5,6 +5,7 @@ Depends on LLMClient abstraction, not a concrete provider.
 """
 
 from kyf.clients.llm_client import LLMClient
+from kyf.core.interfaces import AbstractContentAnalyzer
 from kyf.logger import get_logger
 from kyf.models.llm import AnalysisResult
 from kyf.models.moltbook import Post
@@ -14,7 +15,7 @@ from kyf.utils.sanitizer import InputSanitizer
 logger = get_logger(__name__)
 
 
-class ContentAnalyzerService:
+class ContentAnalyzerService(AbstractContentAnalyzer):
     """Analyzes posts to determine if they contain fact-checkable claims."""
 
     def __init__(self, llm: LLMClient, min_confidence: float = 0.6) -> None:
