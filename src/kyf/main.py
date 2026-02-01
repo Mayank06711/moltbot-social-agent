@@ -1,19 +1,22 @@
 """Entry point for the KYF agent.
 
-Wires up all dependencies (Composition Root) and starts the heartbeat loop.
+Composition Root: wires up all abstractions to their concrete implementations.
+This is the ONLY place that knows about concrete classes.
 """
 
 import asyncio
 import signal
-import sys
 
 from kyf.clients.llm_client import GeminiClient
 from kyf.clients.moltbook_client import MoltbookClient
 from kyf.config import load_settings
 from kyf.core.agent import KYFAgent
 from kyf.core.scheduler import HeartbeatScheduler
-from kyf.core.state_repository import StateRepository
+from kyf.core.state_repository import FileStateRepository
 from kyf.logger import get_logger, setup_logging
+from kyf.services.content_analyzer import ContentAnalyzerService
+from kyf.services.fact_checker import FactCheckerService
+from kyf.services.post_creator import PostCreatorService
 
 
 async def main() -> None:
@@ -23,23 +26,29 @@ async def main() -> None:
 
     logger.info("kyf_starting", version="0.1.0")
 
-    # --- Compose dependencies ---
+    # --- Compose concrete implementations ---
     moltbook = MoltbookClient(
         base_url=settings.moltbook_base_url,
         api_key=settings.moltbook_api_key,
     )
 
-    llm = GeminiClient(
-        api_key=settings.gemini_api_key,
-    )
+    llm = GeminiClient(api_key=settings.gemini_api_key)
 
-    state_repo = StateRepository(db_path=settings.db_path)
+    state_repo = FileStateRepository(data_dir=settings.db_path)
     await state_repo.initialize()
 
+    # Services — all depend on LLMClient abstraction
+    analyzer = ContentAnalyzerService(llm)
+    fact_checker = FactCheckerService(llm)
+    post_creator = PostCreatorService(llm)
+
+    # Agent — depends only on abstract interfaces
     agent = KYFAgent(
         moltbook=moltbook,
-        llm=llm,
         state_repo=state_repo,
+        analyzer=analyzer,
+        fact_checker=fact_checker,
+        post_creator=post_creator,
         max_posts_per_day=settings.max_posts_per_day,
         max_comments_per_heartbeat=settings.max_comments_per_heartbeat,
     )
