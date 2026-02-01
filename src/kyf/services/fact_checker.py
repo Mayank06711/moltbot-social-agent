@@ -24,11 +24,22 @@ class FactCheckerService(AbstractFactChecker):
         """Generate a fact-check reply for a post with an identified claim."""
         sanitized_title = InputSanitizer.sanitize(post.title)
         sanitized_body = InputSanitizer.sanitize(post.body or "")
+        # Re-sanitize claim_summary — it's LLM output from the analyzer,
+        # which could have been influenced by a crafted post to smuggle
+        # injection payloads into this second LLM call.
+        raw_claim = analysis.claim_summary or "unspecified claim"
+        if InputSanitizer.is_suspicious(raw_claim):
+            logger.warning(
+                "suspicious_claim_summary",
+                post_id=post.id,
+                raw_claim=raw_claim[:200],
+            )
+        sanitized_claim = InputSanitizer.sanitize(raw_claim)
 
         prompt = PromptTemplates.FACT_CHECK_REPLY.format(
             title=sanitized_title,
             body=sanitized_body,
-            claim_summary=analysis.claim_summary or "unspecified claim",
+            claim_summary=sanitized_claim,
         )
 
         try:
