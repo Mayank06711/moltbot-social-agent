@@ -6,6 +6,7 @@ Single Responsibility: only handles original content generation.
 import random
 
 from kyf.clients.llm_client import LLMClient
+from kyf.core.interfaces import AbstractPostCreator
 from kyf.logger import get_logger
 from kyf.models.llm import OriginalPostContent
 from kyf.prompts.templates import PromptTemplates
@@ -23,7 +24,7 @@ TOPIC_CATEGORIES = [
 ]
 
 
-class PostCreatorService:
+class PostCreatorService(AbstractPostCreator):
     """Generates original myth-busting content for KYF to post."""
 
     def __init__(self, llm: LLMClient) -> None:
