@@ -15,9 +15,9 @@ class Settings(BaseSettings):
     moltbook_api_key: SecretStr
     moltbook_base_url: str = "https://www.moltbook.com/api/v1"
 
-    # Gemini
-    gemini_api_key: SecretStr
-    gemini_model: str = "gemini-2.0-flash"
+    # Groq
+    groq_api_key: SecretStr
+    groq_model: str = "llama-3.3-70b-versatile"
 
     # Agent behavior
     heartbeat_interval_hours: int = Field(default=4, ge=1, le=24)
