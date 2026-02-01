@@ -32,6 +32,11 @@ class AbstractMoltbookClient(ABC):
     ) -> list[Post]: ...
 
     @abstractmethod
+    async def get_feed(
+        self, sort: PostSortOrder = PostSortOrder.HOT, limit: int = 25
+    ) -> list[Post]: ...
+
+    @abstractmethod
     async def get_post(self, post_id: str) -> Post: ...
 
     @abstractmethod
