@@ -7,7 +7,7 @@ This is the ONLY place that knows about concrete classes.
 import asyncio
 import signal
 
-from kyf.clients.llm_client import GeminiClient
+from kyf.clients.llm_client import GroqClient
 from kyf.clients.moltbook_client import MoltbookClient
 from kyf.config import load_settings
 from kyf.core.agent import KYFAgent
@@ -32,7 +32,7 @@ async def main() -> None:
         api_key=settings.moltbook_api_key,
     )
 
-    llm = GeminiClient(api_key=settings.gemini_api_key)
+    llm = GroqClient(api_key=settings.groq_api_key)
 
     state_repo = FileStateRepository(data_dir=settings.db_path)
     await state_repo.initialize()
@@ -51,6 +51,7 @@ async def main() -> None:
         post_creator=post_creator,
         max_posts_per_day=settings.max_posts_per_day,
         max_comments_per_heartbeat=settings.max_comments_per_heartbeat,
+        data_dir=settings.db_path,
     )
 
     scheduler = HeartbeatScheduler(
@@ -67,6 +68,15 @@ async def main() -> None:
 
     signal.signal(signal.SIGINT, _signal_handler)
     signal.signal(signal.SIGTERM, _signal_handler)
+
+    # --- Subscribe to submolts for personalized feed ---
+    target_submolts = ["science", "ai-ethics", "economics", "finance", "health", "selfimprovement", "random", "general"]
+    for submolt_name in target_submolts:
+        try:
+            await moltbook.subscribe(submolt_name)
+            logger.info("subscribed_to_submolt", submolt=submolt_name)
+        except Exception as e:
+            logger.debug("subscribe_skipped", submolt=submolt_name, error=str(e))
 
     # --- Run ---
     try:

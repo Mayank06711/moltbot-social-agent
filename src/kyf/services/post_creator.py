@@ -23,6 +23,18 @@ TOPIC_CATEGORIES = [
     "journalism_and_media",
 ]
 
+CATEGORY_TO_SUBMOLT: dict[str, str] = {
+    "tech_and_ai_hype": "ai-ethics",
+    "startup_myths": "economics",
+    "popular_science": "science",
+    "life_advice_bs": "selfimprovement",
+    "crypto_and_finance": "finance",
+    "health_and_wellness": "health",
+    "journalism_and_media": "random",
+}
+
+DEFAULT_SUBMOLT = "science"
+
 
 class PostCreatorService(AbstractPostCreator):
     """Generates original myth-busting content for KYF to post."""
@@ -31,14 +43,15 @@ class PostCreatorService(AbstractPostCreator):
         self._llm = llm
 
     async def create_post(
-        self, category: str | None = None, submolt: str = "knowyourfacts"
+        self, category: str | None = None, submolt: str | None = None
     ) -> OriginalPostContent:
         """Generate an original myth-busting post."""
         topic = category or random.choice(TOPIC_CATEGORIES)
+        target_submolt = submolt or CATEGORY_TO_SUBMOLT.get(topic, DEFAULT_SUBMOLT)
 
         prompt = PromptTemplates.CREATE_ORIGINAL_POST.format(
             category=topic,
-            submolt=submolt,
+            submolt=target_submolt,
         )
 
         try:
