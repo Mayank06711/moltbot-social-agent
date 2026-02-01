@@ -4,7 +4,7 @@ from pydantic import BaseModel, Field
 
 
 class LLMConfig(BaseModel):
-    model: str = "gemini-2.0-flash"
+    model: str = "llama-3.3-70b-versatile"
     temperature: float = Field(default=0.8, ge=0.0, le=2.0)
     max_output_tokens: int = Field(default=1024, gt=0)
 
@@ -31,5 +31,5 @@ class OriginalPostContent(BaseModel):
 
     title: str = Field(..., min_length=1, max_length=300)
     body: str = Field(..., min_length=1, max_length=10000)
-    target_submolt: str = "knowyourfacts"
+    target_submolt: str = "science"
     topic_category: str | None = None
