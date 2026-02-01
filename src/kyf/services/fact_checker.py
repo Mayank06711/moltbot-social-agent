@@ -4,6 +4,7 @@ Single Responsibility: only handles response generation for identified claims.
 """
 
 from kyf.clients.llm_client import LLMClient
+from kyf.core.interfaces import AbstractFactChecker
 from kyf.logger import get_logger
 from kyf.models.llm import AnalysisResult, FactCheckResponse
 from kyf.models.moltbook import Post
@@ -13,7 +14,7 @@ from kyf.utils.sanitizer import InputSanitizer
 logger = get_logger(__name__)
 
 
-class FactCheckerService:
+class FactCheckerService(AbstractFactChecker):
     """Generates witty fact-check responses using the LLM."""
 
     def __init__(self, llm: LLMClient) -> None:
