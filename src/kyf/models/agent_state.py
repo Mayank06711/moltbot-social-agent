@@ -9,7 +9,9 @@ from pydantic import BaseModel, Field
 class ActionType(StrEnum):
     POST_CREATED = "post_created"
     COMMENT_CREATED = "comment_created"
+    COMMENT_REPLIED = "comment_replied"
     VOTE_CAST = "vote_cast"
+    COMMENT_VOTE_CAST = "comment_vote_cast"
     SUBMOLT_JOINED = "submolt_joined"
     HEARTBEAT = "heartbeat"
     FEED_BROWSED = "feed_browsed"

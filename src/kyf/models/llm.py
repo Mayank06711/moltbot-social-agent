@@ -26,6 +26,12 @@ class FactCheckResponse(BaseModel):
     sources_used: list[str] = Field(default_factory=list)
 
 
+class CommentReplyResponse(BaseModel):
+    """Generated conversational reply to a comment on agent's own post."""
+
+    response_text: str = Field(..., min_length=1, max_length=2000)
+
+
 class OriginalPostContent(BaseModel):
     """Generated content for an original myth-busting post."""
 

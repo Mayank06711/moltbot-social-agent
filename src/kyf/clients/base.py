@@ -10,6 +10,7 @@ from kyf.models.moltbook import (
     AgentProfile,
     Comment,
     CommentSortOrder,
+    CommentVoteRequest,
     CreateCommentRequest,
     CreatePostRequest,
     CreateSubmoltRequest,
@@ -59,6 +60,9 @@ class AbstractMoltbookClient(ABC):
 
     @abstractmethod
     async def vote(self, request: VoteRequest) -> None: ...
+
+    @abstractmethod
+    async def vote_comment(self, request: CommentVoteRequest) -> None: ...
 
     # --- Submolts ---
 

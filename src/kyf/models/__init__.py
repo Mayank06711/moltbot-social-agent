@@ -9,6 +9,7 @@ from kyf.models.moltbook import (
     CreatePostRequest,
     CreateCommentRequest,
     VoteRequest,
+    CommentVoteRequest,
     CreateSubmoltRequest,
     UpdateProfileRequest,
     MoltbookResponse,
@@ -18,6 +19,7 @@ from kyf.models.moltbook import (
 from kyf.models.agent_state import AgentState, ActionLog, ActionType
 from kyf.models.llm import (
     AnalysisResult,
+    CommentReplyResponse,
     FactCheckResponse,
     OriginalPostContent,
     LLMConfig,
@@ -34,6 +36,7 @@ __all__ = [
     "CreatePostRequest",
     "CreateCommentRequest",
     "VoteRequest",
+    "CommentVoteRequest",
     "CreateSubmoltRequest",
     "UpdateProfileRequest",
     "MoltbookResponse",
@@ -43,6 +46,7 @@ __all__ = [
     "ActionLog",
     "ActionType",
     "AnalysisResult",
+    "CommentReplyResponse",
     "FactCheckResponse",
     "OriginalPostContent",
     "LLMConfig",

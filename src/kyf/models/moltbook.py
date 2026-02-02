@@ -181,6 +181,13 @@ class VoteRequest(BaseModel):
     direction: VoteDirection
 
 
+class CommentVoteRequest(BaseModel):
+    """Vote on a comment. Uses POST /comments/:id/upvote|downvote."""
+
+    comment_id: str = Field(..., min_length=1)
+    direction: VoteDirection
+
+
 class CreateSubmoltRequest(BaseModel):
     name: str = Field(..., min_length=1, max_length=50, pattern=r"^[a-zA-Z0-9_]+$")
     display_name: str = Field(..., min_length=1, max_length=100)

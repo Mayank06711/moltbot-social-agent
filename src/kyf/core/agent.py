@@ -10,7 +10,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from kyf.clients.base import AbstractMoltbookClient
-from kyf.clients.llm_client import LLMRateLimitError
+from kyf.clients.llm_client import LLMClient, LLMRateLimitError
 from kyf.clients.moltbook_client import MoltbookClientError
 from kyf.core.interfaces import (
     AbstractContentAnalyzer,
@@ -20,13 +20,19 @@ from kyf.core.interfaces import (
 )
 from kyf.logger import get_logger
 from kyf.models.agent_state import ActionLog, ActionType
+from kyf.models.llm import CommentReplyResponse
 from kyf.models.moltbook import (
+    Comment,
+    CommentVoteRequest,
     CreateCommentRequest,
     CreatePostRequest,
+    Post,
     PostSortOrder,
     VoteDirection,
     VoteRequest,
 )
+from kyf.prompts.templates import PromptTemplates
+from kyf.utils.sanitizer import InputSanitizer
 
 logger = get_logger(__name__)
 
@@ -44,8 +50,10 @@ class KYFAgent:
         analyzer: AbstractContentAnalyzer,
         fact_checker: AbstractFactChecker,
         post_creator: AbstractPostCreator,
+        llm: LLMClient,
         max_posts_per_day: int = 3,
         max_comments_per_heartbeat: int = 10,
+        max_replies_per_heartbeat: int = 5,
         data_dir: str = "data",
     ) -> None:
         self._moltbook = moltbook
@@ -53,10 +61,13 @@ class KYFAgent:
         self._analyzer = analyzer
         self._fact_checker = fact_checker
         self._post_creator = post_creator
+        self._llm = llm
         self._max_posts_per_day = max_posts_per_day
         self._max_comments_per_heartbeat = max_comments_per_heartbeat
+        self._max_replies_per_heartbeat = max_replies_per_heartbeat
         self._data_dir = Path(data_dir)
         self._llm_limited = False
+        self._agent_username: str | None = None
 
     def _write_llm_limits(self, error: LLMRateLimitError, phase: str) -> None:
         """Write rate limit details to llm-limits.json for later inspection."""
@@ -92,6 +103,7 @@ class KYFAgent:
         try:
             await self._fetch_heartbeat()
             await self._browse_and_engage()
+            await self._reply_to_comments_on_own_posts()
             await self._maybe_create_post()
 
             await self._state_repo.log_action(
@@ -228,6 +240,138 @@ class KYFAgent:
             )
         except Exception as e:
             logger.warning("vote_failed", post_id=post_id, error=str(e))
+
+    async def _get_agent_username(self) -> str | None:
+        """Get and cache the agent's username to avoid replying to self."""
+        if self._agent_username is None:
+            try:
+                profile = await self._moltbook.get_profile()
+                self._agent_username = profile.username or profile.name
+            except Exception as e:
+                logger.warning("profile_fetch_failed", error=str(e))
+        return self._agent_username
+
+    async def _reply_to_comments_on_own_posts(self) -> None:
+        """Fetch comments on agent's own posts and reply to new ones."""
+        replies_made = 0
+
+        own_post_ids = await self._state_repo.get_action_target_ids(ActionType.POST_CREATED)
+        if not own_post_ids:
+            logger.info("own_post_replies_complete", replies_made=0, reason="no_own_posts")
+            return
+
+        agent_username = await self._get_agent_username()
+
+        # Process most recent posts first, limit to last 10
+        for post_id in reversed(own_post_ids[-10:]):
+            if replies_made >= self._max_replies_per_heartbeat:
+                break
+
+            try:
+                comments = await self._moltbook.get_comments(post_id)
+            except Exception as e:
+                logger.warning("comments_fetch_failed", post_id=post_id, error=str(e))
+                continue
+
+            if not comments:
+                continue
+
+            # Get the original post for context in the reply prompt
+            try:
+                post = await self._moltbook.get_post(post_id)
+            except Exception as e:
+                logger.warning("post_fetch_failed", post_id=post_id, error=str(e))
+                continue
+
+            for comment in comments:
+                if replies_made >= self._max_replies_per_heartbeat:
+                    break
+
+                # Skip already-replied comments
+                if await self._state_repo.is_comment_replied(comment.id):
+                    continue
+
+                # Skip own comments (don't reply to self)
+                if agent_username and comment.author_name == agent_username:
+                    continue
+
+                try:
+                    reply_text = await self._generate_comment_reply(post, comment)
+
+                    await self._moltbook.create_comment(
+                        CreateCommentRequest(
+                            post_id=post_id,
+                            content=reply_text,
+                            parent_id=comment.id,
+                        )
+                    )
+
+                    await self._state_repo.mark_comment_replied(comment.id)
+                    await self._state_repo.log_action(
+                        ActionLog(
+                            action_type=ActionType.COMMENT_REPLIED,
+                            target_id=comment.id,
+                            details=f"post={post_id}",
+                        )
+                    )
+
+                    replies_made += 1
+                    logger.info(
+                        "comment_reply_posted",
+                        post_id=post_id,
+                        comment_id=comment.id,
+                        comment_author=comment.author_name,
+                    )
+
+                    await self._vote_on_comment(comment)
+
+                except LLMRateLimitError:
+                    raise
+                except Exception as e:
+                    logger.error(
+                        "comment_reply_failed",
+                        comment_id=comment.id,
+                        error=str(e),
+                        error_type=type(e).__name__,
+                    )
+
+        logger.info("own_post_replies_complete", replies_made=replies_made)
+
+    async def _generate_comment_reply(self, post: Post, comment: Comment) -> str:
+        """Use LLM to generate a conversational reply to a comment."""
+        prompt = PromptTemplates.COMMENT_REPLY.format(
+            post_title=InputSanitizer.sanitize(post.title),
+            post_body_excerpt=InputSanitizer.sanitize((post.body or "")[:500]),
+            comment_body=InputSanitizer.sanitize(comment.body),
+            comment_author=InputSanitizer.sanitize(comment.author_name or "anonymous"),
+        )
+
+        raw = await self._llm.generate_json(
+            system_prompt=PromptTemplates.SYSTEM_PERSONA,
+            user_prompt=prompt,
+        )
+
+        response = CommentReplyResponse.model_validate(raw)
+        return response.response_text
+
+    async def _vote_on_comment(self, comment: Comment) -> None:
+        """Upvote substantive comments on agent's own posts."""
+        try:
+            if len(comment.body) < 50:
+                return
+
+            await self._moltbook.vote_comment(
+                CommentVoteRequest(comment_id=comment.id, direction=VoteDirection.UPVOTE)
+            )
+            await self._state_repo.log_action(
+                ActionLog(
+                    action_type=ActionType.COMMENT_VOTE_CAST,
+                    target_id=comment.id,
+                    details=VoteDirection.UPVOTE.value,
+                )
+            )
+        except Exception as e:
+            logger.warning("comment_vote_failed", comment_id=comment.id, error=str(e))
 
     async def _maybe_create_post(self) -> None:
         today_posts = await self._state_repo.get_today_action_count(ActionType.POST_CREATED)

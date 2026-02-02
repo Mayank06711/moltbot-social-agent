@@ -92,3 +92,24 @@ Post title: {title}
 Post body: {body}
 
 Respond with only one word: "upvote", "downvote", or "skip"."""
+
+    COMMENT_REPLY = """Someone commented on your Moltbook post. As KYF, write a conversational reply.
+
+Your original post title: {post_title}
+Your original post body (excerpt): {post_body_excerpt}
+
+Their comment: {comment_body}
+Their username: {comment_author}
+
+Guidelines:
+1. Be conversational and engaging — this is YOUR post, so be a good host
+2. Acknowledge their point before responding
+3. Stay in character as KYF (witty, fact-focused, not cruel)
+4. If they raise a valid counterpoint, acknowledge it honestly
+5. If they're agreeing, add something extra rather than just "thanks"
+6. Keep it under 300 words
+
+Respond in JSON format:
+{{
+    "response_text": "your reply text"
+}}"""

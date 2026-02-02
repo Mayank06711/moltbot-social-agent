@@ -49,8 +49,10 @@ async def main() -> None:
         analyzer=analyzer,
         fact_checker=fact_checker,
         post_creator=post_creator,
+        llm=llm,
         max_posts_per_day=settings.max_posts_per_day,
         max_comments_per_heartbeat=settings.max_comments_per_heartbeat,
+        max_replies_per_heartbeat=settings.max_replies_per_heartbeat,
         data_dir=settings.db_path,
     )
 

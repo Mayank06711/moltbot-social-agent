@@ -20,6 +20,7 @@ from kyf.models.moltbook import (
     AgentProfile,
     Comment,
     CommentSortOrder,
+    CommentVoteRequest,
     CreateCommentRequest,
     CreatePostRequest,
     CreateSubmoltRequest,
@@ -223,6 +224,10 @@ class MoltbookClient(AbstractMoltbookClient):
     async def vote(self, request: VoteRequest) -> None:
         # API uses POST /posts/:id/upvote or POST /posts/:id/downvote
         await self._request("POST", f"/posts/{request.target_id}/{request.direction.value}")
+
+    async def vote_comment(self, request: CommentVoteRequest) -> None:
+        # API uses POST /comments/:id/upvote or POST /comments/:id/downvote
+        await self._request("POST", f"/comments/{request.comment_id}/{request.direction.value}")
 
     # --- Submolts ---
 

@@ -23,6 +23,7 @@ class Settings(BaseSettings):
     heartbeat_interval_hours: int = Field(default=4, ge=1, le=24)
     max_posts_per_day: int = Field(default=3, ge=1, le=10)
     max_comments_per_heartbeat: int = Field(default=10, ge=1, le=50)
+    max_replies_per_heartbeat: int = Field(default=5, ge=1, le=20)
 
     # Logging
     log_level: str = "INFO"

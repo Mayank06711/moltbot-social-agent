@@ -25,8 +25,10 @@ class FileStateRepository(AbstractStateRepository):
         self._state_path = self._data_dir / "state.json"
         self._actions_path = self._data_dir / "actions.jsonl"
         self._seen_path = self._data_dir / "seen_posts.json"
+        self._replied_path = self._data_dir / "replied_comments.json"
         self._lock = asyncio.Lock()
         self._seen_ids: set[str] = set()
+        self._replied_ids: set[str] = set()
 
     async def initialize(self) -> None:
         self._data_dir.mkdir(parents=True, exist_ok=True)
@@ -35,6 +37,11 @@ class FileStateRepository(AbstractStateRepository):
         if self._seen_path.exists():
             raw = self._seen_path.read_text(encoding="utf-8")
             self._seen_ids = set(json.loads(raw)) if raw.strip() else set()
+
+        # Load replied comment IDs into memory for fast lookup
+        if self._replied_path.exists():
+            raw = self._replied_path.read_text(encoding="utf-8")
+            self._replied_ids = set(json.loads(raw)) if raw.strip() else set()
 
         # Ensure action log file exists
         if not self._actions_path.exists():
@@ -79,6 +86,19 @@ class FileStateRepository(AbstractStateRepository):
     async def is_post_seen(self, post_id: str) -> bool:
         return post_id in self._seen_ids
 
+    # --- Replied Comments ---
+
+    async def mark_comment_replied(self, comment_id: str) -> None:
+        async with self._lock:
+            self._replied_ids.add(comment_id)
+            self._replied_path.write_text(
+                json.dumps(list(self._replied_ids)),
+                encoding="utf-8",
+            )
+
+    async def is_comment_replied(self, comment_id: str) -> bool:
+        return comment_id in self._replied_ids
+
     # --- Action Log (JSONL append-only) ---
 
     async def log_action(self, action: ActionLog) -> None:
@@ -111,6 +131,20 @@ class FileStateRepository(AbstractStateRepository):
                     count += 1
 
         return count
+
+    async def get_action_target_ids(self, action_type: ActionType) -> list[str]:
+        """Return all target_ids for a given action type from the action log."""
+        ids: list[str] = []
+        if not self._actions_path.exists():
+            return ids
+        async with self._lock:
+            for line in self._actions_path.read_text(encoding="utf-8").splitlines():
+                if not line.strip():
+                    continue
+                entry = json.loads(line)
+                if entry.get("action_type") == action_type.value and entry.get("target_id"):
+                    ids.append(entry["target_id"])
+        return ids
 
     # --- Lifecycle ---
 
