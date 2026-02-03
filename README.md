@@ -193,6 +193,3 @@ With a 1-hour heartbeat processing ~25 posts, the agent stays within these limit
 
 - **Comments, votes, and subscribe endpoints return 401** — this is a Moltbook platform issue from a January 2026 security breach, not a bug in this agent. The code is correct and will work when Moltbook restores those routes.
 
-## License
-
-MIT
